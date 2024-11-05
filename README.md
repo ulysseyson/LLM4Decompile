@@ -1,4 +1,10 @@
-# LLM4Decompile
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/albertan017/LLM4Decompile/blob/main/samples/logo-dark.png">
+    <img alt="LLM4Decompile" src="https://github.com/albertan017/LLM4Decompile/blob/main/samples/logo-light.png" width=55%>
+  </picture>
+</p>
 
 <p align="left">
     📊&nbsp;<a href="#evaluation">Results</a>
@@ -7,7 +13,8 @@
     | 📚&nbsp;<a href="#humaneval-decompile">HumanEval-Decompile</a>
     | 📎&nbsp;<a href="#citation">Citation</a>
     | 📝&nbsp;<a href="https://arxiv.org/abs/2403.05286">Paper</a>
-    | 📝&nbsp;<a href="https://colab.research.google.com/drive/1X5TuUKuNuksGJZz6Cc83KKI0ATBP9q7r?usp=sharing">Colab</a>
+    | 🖥️&nbsp;<a href="https://colab.research.google.com/drive/1X5TuUKuNuksGJZz6Cc83KKI0ATBP9q7r?usp=sharing">Colab</a>
+    | ▶️&nbsp;<a href="https://www.youtube.com/watch?v=x7knF3Z1yLk">YouTube</a>
 </p>
 
 Reverse Engineering: Decompiling Binary Code with Large Language Models
@@ -15,7 +22,8 @@ Reverse Engineering: Decompiling Binary Code with Large Language Models
 [![GitHub Tread](https://trendshift.io/api/badge/repositories/8664)](https://trendshift.io/repositories/8664)
 
 ## Updates
-* [2024-09-26]: Update a [Colab notebook](https://colab.research.google.com/drive/1X5TuUKuNuksGJZz6Cc83KKI0ATBP9q7r?usp=sharing) to demonstrate the usage of the LLM4Decompile model, including examples for the LLM4Decompile-End and LLM4Decompile-Red models.
+* [2024-10-17]: Release [decompile-ghidra-100k](https://huggingface.co/datasets/LLM4Binary/decompile-ghidra-100k), a subset of 100k training samples (25k per optimization level). We provide a [training script](https://github.com/albertan017/LLM4Decompile/blob/main/train/README.md) that runs in ~3.5 hours on a single A100 40G GPU. It achieves a 0.26 re-executability rate, with a total cost of under $20 for quick replication of LLM4Decompile.
+* [2024-09-26]: Update a [Colab notebook](https://colab.research.google.com/drive/1X5TuUKuNuksGJZz6Cc83KKI0ATBP9q7r?usp=sharing) to demonstrate the usage of the LLM4Decompile model, including examples for the LLM4Decompile-End and LLM4Decompile-Ref models.
 * [2024-09-23]: Release [LLM4Decompile-9B-v2](https://huggingface.co/LLM4Binary/llm4decompile-9b-v2), fine-tuned based on [Yi-Coder-9B](https://huggingface.co/01-ai/Yi-Coder-9B), achieved a re-executability rate of **0.6494** on the Decompile benchmark.
 * [2024-06-19]: Release [V2](https://huggingface.co/LLM4Binary/llm4decompile-6.7b-v2) series (LLM4Decompile-Ref). V2 (1.3B-22B), building upon **Ghidra**, are trained on 2 billion tokens to **refine** the decompiled pseudo-code from Ghidra. The 22B-V2 version outperforms the 6.7B-V1.5 by an additional 40.1%. Please check the [ghidra folder](https://github.com/albertan017/LLM4Decompile/tree/main/ghidra) for details.
 * [2024-05-13]: Release [V1.5](https://huggingface.co/LLM4Binary/llm4decompile-6.7b-v1.5) series (LLM4Decompile-End, directly decompile binary using LLM). V1.5 are trained with a larger dataset (15B tokens) and a maximum token **length of 4,096**, with remarkable  performance (over **100% improvement**) compared to the previous model.
@@ -24,7 +32,6 @@ Reverse Engineering: Decompiling Binary Code with Large Language Models
 ## About
 * **LLM4Decompile** is the pioneering open-source large language model dedicated to decompilation. Its current version supports decompiling Linux x86_64 binaries, ranging from GCC's O0 to O3 optimization levels, into human-readable C source code. Our team is committed to expanding this tool's capabilities, with ongoing efforts to incorporate a broader range of architectures and configurations.
 * **LLM4Decompile-End** focuses on decompiling the binary directly. **LLM4Decompile-Ref** refines the pseudo-code decompiled by Ghidra.
-
 
 ## Evaluation
 
@@ -46,7 +53,11 @@ During compilation, the Preprocessor processes the source code (SRC) to eliminat
 ### Results
 
 <p align="center">
-<img src="https://github.com/albertan017/LLM4Decompile/blob/main/samples/results_paper.png" alt="results" width="800" height="auto">
+<img src="https://github.com/albertan017/LLM4Decompile/blob/main/samples/results_end_final.png" alt="results" width="800" height="auto">
+</p>
+
+<p align="center">
+<img src="https://github.com/albertan017/LLM4Decompile/blob/main/samples/results_refine_final.png" alt="image" width="800" height="auto">
 </p>
 
 ## Models
@@ -54,21 +65,12 @@ Our LLM4Decompile includes models with sizes between 1.3 billion and 33 billion 
 
 | Model                 | Checkpoint                                                        | Size | Re-executability       | Note |
 |-----------------------|-------------------------------------------------------------------|------|---------------------|----------------------|
-| llm4decompile-1.3b     | 🤗 [HF Link](https://huggingface.co/arise-sustech/llm4decompile-1.3b)     | 1.3B | 10.6%   |-|
-| llm4decompile-6.7b     | 🤗 [HF Link](https://huggingface.co/arise-sustech/llm4decompile-6.7b)     | 6.7B | 21.4%   |-|
-| llm4decompile-33b      | 🤗 [HF Link](https://huggingface.co/arise-sustech/llm4decompile-33b)      | 33B  | 21.5%   |-|
-| llm4decompile-6.7b-nsp | 🤗 [HF Link](https://huggingface.co/arise-sustech/llm4decompile-6.7b-nsp) | 6.7B | 20.9%   | Note 1 |
-| llm4decompile-6.7b-uo  | 🤗 [HF Link](https://huggingface.co/arise-sustech/llm4decompile-6.7b-uo)  | 6.7B | 21.9%   | Note 2 |
 | **llm4decompile-1.3b-v1.5**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-1.3b-v1.5)   | 1.3B | **27.3%**   | Note 3 |
 | **llm4decompile-6.7b-v1.5**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-6.7b-v1.5)   | 6.7B | **45.4%**   | Note 3 |
 | **llm4decompile-1.3b-v2**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-1.3b-v2)   | 1.3B | **46.0%**   | Note 4 |
 | **llm4decompile-6.7b-v2**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-6.7b-v2)   | 6.7B | **52.7%**   | Note 4 |
-| **llm4decompile-9b-v2**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-9b-v2)   | 9B | **64.9%**  | - |
+| **llm4decompile-9b-v2**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-9b-v2)   | 9B | **64.9%**  | Note 4 |
 | **llm4decompile-22b-v2**| 🤗 [HF Link](https://huggingface.co/LLM4Binary/llm4decompile-22b-v2)   | 22B | **63.6%**   | Note 4 |
-
-Note 1: The NSP model is trained with assembly code, the average re-executability is around 0.17.
-
-Note 2: The unified optimization (UO) model is trained without prior knowledge of the optimization levels (O0~O3), the average re-executability is around 0.21. The pre-processing of the UO model is slightly different (no prior knowledge of the On), please check the [model page](https://huggingface.co/arise-sustech/llm4decompile-6.7b-uo#3-how-to-use).
 
 Note 3: V1.5 series are trained with a larger dataset (15B tokens) and a maximum token size of 4,096, with remarkable performance (over 100% improvement) compared to the previous model.
 
