@@ -100,10 +100,15 @@ pl = pipeline(
     trust_remote_code=True,
     device_map="auto",
     do_sample=False,
-    max_new_tokens=256,
+    max_new_tokens=512,
     eos_token_id=terminators,  # I already set the eos_token_id here, still no end for its self-coververstaion
     pad_token_id=tokenizer.eos_token_id,
     token="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",
+    #     model_kwargs={
+    #         # "attn_implementation": "flash_attention_2",
+    #         "ch"
+    #         # ""
+    #     },
 )
 
 print("Model Loaded!")
@@ -111,7 +116,26 @@ tokenizer.pad_token = tokenizer.eos_token
 tokenizer.pad_token_id = tokenizer.eos_token_id
 system_prompt = {
     "role": "system",
-    "content": f"""You are a decompiler assistant. When user give ghidra decompiled pseudo code and optimization level, you should return refined compilable c source code only. Don't wrap code with ``` Don't repeat user's given function. Don't make doxygen starts with #. you are writing c/c++ code. User will give // This is the ghidra decompiled pseudo code with [optimization level]: \n [pseudo code]\n\n // Refined Source code is\n""",
+    "content": (
+        "You are a decompiler assistant."
+        "User will give you ghidra pseudo code and it's specific optimization level when compiled."
+        "The input and output values ​​of the function that the original function must pass through are given."  # Add for ver1.0
+        "Your goal is just give refined source code, form as single function."
+        "Follow below instructions"
+        "- Don't repeat input function which is given by user."
+        "- Don't wrap code in formatting symbols."
+        "- Don't need to write Doxygen comments."
+        "- Aware that now you are writing C/C++ code, compilable and executable"
+        "- Every function have return values"
+        "- Concern given binary's input-output test values, which our refined function should follows."  # Add for ver1.0
+        "User prompt will be provided like below"
+        "// This is the Ghidra decompiled pseudo code with [optimization level]:\n"
+        "[pseudo code]\n\n"
+        "// This is input-output pairs for function testing"  # Add for ver1.0
+        "[input]->[output]"  # Add for ver1.0
+        "Then You will answer like this"
+        "// Refined source code from given pseudo code"
+    ),
 }
 OPT = ["O0", "O1", "O2", "O3"]  # Optimization states
 opts = {
@@ -120,24 +144,64 @@ opts = {
     "O2": "// This is the ghidra decompiled pseudo code with O2 optimization:\n",
     "O3": "// This is the ghidra decompiled pseudo code with O3 optimization:\n",
 }
+test_values = ""
 with open(args.data_path, "r") as f:
     data_all = json.load(f)  # [104:]
 total_prompts = []
 from transformers.pipelines.text_generation import Chat
+import re
+
+
+def extract_assertions(func):
+    # Pattern to capture func0 call within an assert statement
+    pattern = re.compile(r"assert\s*\(\s*func0\s*\(([^)]+)\)\s*==\s*(\d+)\s*\);")
+
+    # Find all assertions and store as (input_args_list, output_value) tuples
+    results = []
+    matches = pattern.findall(func)
+    for match in matches:
+        # Split function arguments and strip whitespace
+        args = match[0].split(",")
+        input_args_list = [arg.strip() for arg in args]
+
+        # Expected output is the second captured group
+        output_value = int(match[1])
+
+        # Append result as a tuple
+        results.append((input_args_list, output_value))
+
+    return results
 
 
 for data in data_all:
     opt = data["type"]
     input_asm_prompt = data["input_asm_prompt"]
+    c_test = data["c_test"]
+    # extract assert in c_test
+    tests = extract_assertions(c_test)
     user_prompt = {
         "role": "user",
-        "content": opts[opt] + input_asm_prompt + "\n// Refined Source code is",
+        "content": (
+            f"{opts[opt]}" f"{input_asm_prompt[:5000]}"
+        ),  # Strip if too long asm code
     }
+    if len(tests) > 0:
+        user_prompt["content"] += "//This is input-output pairs for function test.\n"
+        user_prompt["content"] += "\n".join(
+            [str(i) + " -> " + str(o) for i, o in tests]
+        )
+    else:
+        user_prompt["content"] += "There is no input-output for this function.\n"
     total_prompts.append(Chat([system_prompt, user_prompt]))
+
+total_prompts = total_prompts
 NUM = int(len(data_all) / 4)
 num_compile = {"O0": 0, "O1": 0, "O2": 0, "O3": 0}
 num_run = {"O0": 0, "O1": 0, "O2": 0, "O3": 0}
 c_func_decompile_list = []
+opt_state_list = []
+c_func_list = []
+c_test_list = []
 idx = 0
 from torch.utils.data import Dataset
 
@@ -155,39 +219,40 @@ class MDataset(Dataset):
 
 dataset = MDataset()
 import os
+from torch.utils.data import DataLoader
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
 
 with torch.no_grad():
+    batch_size = 1
     for out in tqdm(
-        pl(dataset, batch_size=1, truncation="only_first", max_new_tokens=256),
+        pl(dataset, batch_size=8, truncation="only_first", max_new_tokens=512),
         total=len(total_prompts),
     ):
+
         c_func_decompile = out[0]["generated_text"][-1]["content"]
-        c_func_decompile_list.append(c_func_decompile)
         opt_state = data_all[idx]["type"]
         c_func = data_all[idx]["c_func"]
         c_test = data_all[idx]["c_test"]
+        c_func_decompile_list.append(c_func_decompile)
+        opt_state_list.append(opt_state)
+        c_func_list.append(c_func)
+        c_test_list.append(c_test)
         idx += 1
-        flag_compile, flag_run = evaluate_func(c_func, c_test, c_func_decompile)
-        num_compile[opt_state] += flag_compile
-        num_run[opt_state] += flag_run
+        del out
         torch.cuda.empty_cache()
-# for idx in trange(len(data_all)):
-#     c_func = data_all[idx]["c_func"]
-#     c_test = data_all[idx]["c_test"]
-#     input_asm_prompt = data_all[idx]["input_asm_prompt"]
-#     opt_state = data_all[idx]["type"]
-#     before = f"# This is the Ghidra pseudo decompiled code with {opt_state} optimization:\n"  # prompt
-#     after = "\n# Refined Source code is\n"  # prompt
-#     input_asm_prompt = before + input_asm_prompt.strip() + after
-#     inputs = tokenizer(input_asm_prompt, return_tensors="pt").to(model.device)
-#     with torch.no_grad():
-#         c_func_decompile = pl()
-#     c_func_decompile_list.append(c_func_decompile)
-#     flag_compile, flag_run = evaluate_func(c_func, c_test, c_func_decompile)
-#     num_compile[opt_state] += flag_compile
-#     num_run[opt_state] += flag_run
+
+for idx in trange(len(total_prompts)):
+    c_func, c_test, c_func_decompile, opt_state = (
+        c_func_list[idx],
+        c_test_list[idx],
+        c_func_decompile_list[idx],
+        opt_state_list[idx],
+    )
+    flag_compile, flag_run = evaluate_func(c_func, c_test, c_func_decompile)
+    num_compile[opt_state] += flag_compile
+    num_run[opt_state] += flag_run
+
 with open("results.txt", "a") as f:
     for opt_state in num_compile.keys():
         f.write(
@@ -198,7 +263,7 @@ with open("results.txt", "a") as f:
                 num_run[opt_state] / NUM,
             )
         )
-with open("./decompile_result.json", "w") as f:
+with open("./decompile_result_test_pair.json", "w") as f:
     import json
 
     json.dump(c_func_decompile_list, f)
