@@ -100,7 +100,7 @@ pl = pipeline(
     trust_remote_code=True,
     device_map="auto",
     do_sample=False,
-    max_new_tokens=512,
+    num_workers=16,
     eos_token_id=terminators,  # I already set the eos_token_id here, still no end for its self-coververstaion
     pad_token_id=tokenizer.eos_token_id,
     token="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",
@@ -119,7 +119,8 @@ system_prompt = {
     "content": (
         "You are a decompiler assistant."
         "User will give you ghidra pseudo code and it's specific optimization level when compiled."
-        "The input and output values ​​of the function that the original function must pass through are given."  # Add for ver1.0
+        "And the main funtion for test this funciton will be given."  # Change at ver 1.2
+        "You should think "
         "Your goal is just give refined source code, form as single function."
         "Follow below instructions"
         "- Don't repeat input function which is given by user."
@@ -128,13 +129,16 @@ system_prompt = {
         "- Aware that now you are writing C/C++ code, compilable and executable"
         "- Every function have return values"
         "- Concern given binary's input-output test values, which our refined function should follows."  # Add for ver1.0
+        "- Be aware that test code's function's input and output type."  # ADD for ver 1.2
+        "- Don't repeat main function's test code and include header file"  # ADD for ver 1.2
+        "- Your answer should be compilable, so you should check there is no undefined variable in function,"  # ADD for ver 1.2
         "User prompt will be provided like below"
         "// This is the Ghidra decompiled pseudo code with [optimization level]:\n"
         "[pseudo code]\n\n"
         "// This is input-output pairs for function testing"  # Add for ver1.0
-        "[input]->[output]"  # Add for ver1.0
+        "[test code]"  # Add for ver1.1
         "Then You will answer like this"
-        "// Refined source code from given pseudo code"
+        "// Refined source code from given pseudo code and testing code"  # Change at ver 1.2
     ),
 }
 OPT = ["O0", "O1", "O2", "O3"]  # Optimization states
@@ -173,41 +177,47 @@ def extract_assertions(func):
     return results
 
 
-for data in data_all:
+# sort data_all
+data_all_sorted = sorted(data_all, key=lambda x: len(x["input_asm_prompt"]))
+last = 0
+for i, data in enumerate(data_all_sorted):
     opt = data["type"]
     input_asm_prompt = data["input_asm_prompt"]
     c_test = data["c_test"]
+    if len(input_asm_prompt) > 10000:
+        total_prompts.append("AA")
+        last = i
+        break
     # extract assert in c_test
-    tests = extract_assertions(c_test)
+    # tests = extract_assertions(c_test)
     user_prompt = {
         "role": "user",
-        "content": (
-            f"{opts[opt]}" f"{input_asm_prompt[:5000]}"
-        ),  # Strip if too long asm code
+        "content": (f"{opts[opt]}" f"{input_asm_prompt}"),  # Strip if too long asm code
     }
-    if len(tests) > 0:
-        user_prompt["content"] += "//This is input-output pairs for function test.\n"
-        user_prompt["content"] += "\n".join(
-            [str(i) + " -> " + str(o) for i, o in tests]
-        )
-    else:
-        user_prompt["content"] += "There is no input-output for this function.\n"
+    # if len(tests) > 0:
+    #     user_prompt["content"] += "//This is input-output pairs for function test.\n"
+    #     user_prompt["content"] += "\n".join(
+    #         [str(i) + " -> " + str(o) for i, o in tests]
+    #     )
+    # else:
+    #   user_prompt["content"] += "There is no input-output for this function.\n"
+    user_prompt["content"] += f"//This is test funciton \n\n {c_test}"
     total_prompts.append(Chat([system_prompt, user_prompt]))
 
 total_prompts = total_prompts
-NUM = int(len(data_all) / 4)
+NUM = int(len(data_all_sorted) / 4)
 num_compile = {"O0": 0, "O1": 0, "O2": 0, "O3": 0}
 num_run = {"O0": 0, "O1": 0, "O2": 0, "O3": 0}
 c_func_decompile_list = []
 opt_state_list = []
 c_func_list = []
 c_test_list = []
-idx = 0
 from torch.utils.data import Dataset
 
 
 class MDataset(Dataset):
-    def __init__(self):
+    def __init__(self, total_prompts):
+        total_prompts.reverse()
         self.pint = total_prompts
 
     def __len__(self):
@@ -217,23 +227,73 @@ class MDataset(Dataset):
         return self.pint[index]
 
 
-dataset = MDataset()
+dataset_1 = MDataset(total_prompts=total_prompts[:200])
+dataset_2 = MDataset(total_prompts=total_prompts[200:400])
+dataset_3 = MDataset(total_prompts=total_prompts[400:last])
 import os
 from torch.utils.data import DataLoader
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
+idx = 0
 with torch.no_grad():
-    batch_size = 1
+    batch_size = 24
     for out in tqdm(
-        pl(dataset, batch_size=8, truncation="only_first", max_new_tokens=512),
-        total=len(total_prompts),
+        pl(
+            dataset_1,
+            batch_size=batch_size,
+            truncation="only_first",
+            max_new_tokens=1024,
+        ),
+        total=len(dataset_1),
     ):
 
         c_func_decompile = out[0]["generated_text"][-1]["content"]
-        opt_state = data_all[idx]["type"]
-        c_func = data_all[idx]["c_func"]
-        c_test = data_all[idx]["c_test"]
+        opt_state = data_all_sorted[idx]["type"]
+        c_func = data_all_sorted[idx]["c_func"]
+        c_test = data_all_sorted[idx]["c_test"]
+        c_func_decompile_list.append(c_func_decompile)
+        opt_state_list.append(opt_state)
+        c_func_list.append(c_func)
+        c_test_list.append(c_test)
+        idx += 1
+        torch.cuda.empty_cache()
+    batch_size = 16
+    for out in tqdm(
+        pl(
+            dataset_1,
+            batch_size=batch_size,
+            truncation="only_first",
+            max_new_tokens=1024,
+        ),
+        total=len(dataset_2),
+    ):
+
+        c_func_decompile = out[0]["generated_text"][-1]["content"]
+        opt_state = data_all_sorted[idx]["type"]
+        c_func = data_all_sorted[idx]["c_func"]
+        c_test = data_all_sorted[idx]["c_test"]
+        c_func_decompile_list.append(c_func_decompile)
+        opt_state_list.append(opt_state)
+        c_func_list.append(c_func)
+        c_test_list.append(c_test)
+        idx += 1
+        torch.cuda.empty_cache()
+    batch_size = 4
+    for out in tqdm(
+        pl(
+            dataset_3,
+            batch_size=batch_size,
+            truncation="only_first",
+            max_new_tokens=1024,
+        ),
+        total=len(dataset_3),
+    ):
+
+        c_func_decompile = out[0]["generated_text"][-1]["content"]
+        opt_state = data_all_sorted[idx]["type"]
+        c_func = data_all_sorted[idx]["c_func"]
+        c_test = data_all_sorted[idx]["c_test"]
         c_func_decompile_list.append(c_func_decompile)
         opt_state_list.append(opt_state)
         c_func_list.append(c_func)
@@ -241,6 +301,16 @@ with torch.no_grad():
         idx += 1
         del out
         torch.cuda.empty_cache()
+    idx = len(dataset_1) + len(dataset_2) + len(dataset_3)
+    for j in range(len(data_all_sorted) - idx):
+        opt_state = data_all_sorted[idx]["type"]
+        c_func = data_all_sorted[idx]["c_func"]
+        c_test = data_all_sorted[idx]["c_test"]
+        c_func_decompile_list.append("AAA")
+        opt_state_list.append(opt_state)
+        c_func_list.append(c_func)
+        c_test_list.append(c_test)
+        idx += 1
 
 for idx in trange(len(total_prompts)):
     c_func, c_test, c_func_decompile, opt_state = (
@@ -263,7 +333,7 @@ with open("results.txt", "a") as f:
                 num_run[opt_state] / NUM,
             )
         )
-with open("./decompile_result_test_pair.json", "w") as f:
+with open("./decompile_result_test_whole_3.json", "w") as f:
     import json
 
     json.dump(c_func_decompile_list, f)
