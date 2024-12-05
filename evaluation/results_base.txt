@@ -1,0 +1,4 @@
+model:/workspace/data/llm/Meta-Llama-3.1-8B-Instruct-hf,opt:O0,compile rate:0.5732,run_rate:0.2744
+model:/workspace/data/llm/Meta-Llama-3.1-8B-Instruct-hf,opt:O1,compile rate:0.5061,run_rate:0.1463
+model:/workspace/data/llm/Meta-Llama-3.1-8B-Instruct-hf,opt:O2,compile rate:0.4695,run_rate:0.1707
+model:/workspace/data/llm/Meta-Llama-3.1-8B-Instruct-hf,opt:O3,compile rate:0.4146,run_rate:0.1463
