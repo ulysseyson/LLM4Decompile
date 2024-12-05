@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://github.com/NationalSecurityAgency/ghidra/releases
+HostUrl=https://objects.githubusercontent.com/github-production-release-asset-2e65be/173228436/01cf89fa-7094-453e-8603-ba69c09b9b9d?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20241118%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20241118T051109Z&X-Amz-Expires=300&X-Amz-Signature=744744177c7873856795ef415f85c8c6e1ba378ec4fbb09d2db847243b270b9b&X-Amz-SignedHeaders=host&response-content-disposition=attachment%3B%20filename%3Dghidra_11.2.1_PUBLIC_20241105.zip&response-content-type=application%2Foctet-stream
